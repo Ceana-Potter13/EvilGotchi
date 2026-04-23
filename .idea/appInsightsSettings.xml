@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.example.zybooks" />
+                  <option name="mobileSdkAppId" value="1:135525350330:android:cc0df74a1e761004d57b83" />
+                  <option name="projectId" value="egotchi" />
+                  <option name="projectNumber" value="135525350330" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

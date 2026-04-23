@@ -9,20 +9,22 @@ class EggDataSource {
 private val eggs = listOf(
     Egg(
         id = 1,
-        imageId = R.drawable.egg
+        imageId = R.drawable.paytonegg
     ),
     Egg(
         id = 2,
-        imageId = R.drawable.adultgotchi
+        imageId = R.drawable.ceanaegg
     ),
     Egg(
         id = 3,
-        imageId = R.drawable.teengotchi
+        imageId = R.drawable.willegg
 ),
     Egg(
     id = 4,
-    imageId = R.drawable.babygotchi
-    )
+    imageId = R.drawable.kolaegg
+    ),
+
+
 )
 
 
