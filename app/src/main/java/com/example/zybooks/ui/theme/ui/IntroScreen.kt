@@ -275,7 +275,10 @@ fun LogInScreen(
                 Text(
                     text = errorMessage, 
                     color = Color.Red, 
-                    modifier = Modifier.padding(8.dp), 
+                    modifier = Modifier.background(
+                        color = Color.Black.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(8.dp)
+                    ).padding(8.dp),
                     textAlign = TextAlign.Center
                 )
             }
