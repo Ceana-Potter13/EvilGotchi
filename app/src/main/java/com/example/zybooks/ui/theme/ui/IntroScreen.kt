@@ -1,6 +1,5 @@
 package com.example.zybooks.ui.theme.ui
 
-import android.content.Context
 import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -44,6 +43,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
 
 //first screen to run, loads for 10 seconds before navigating to the login screen
@@ -129,7 +129,6 @@ fun LogInScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
-    val sharedPreferences = remember { context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE) }
     val auth = FirebaseAuth.getInstance()
 
     //most of these were used to find out why firebase wasn't working lol
@@ -142,14 +141,26 @@ fun LogInScreen(
     // Navigation logic handled via LaunchedEffect when authenticatedEmail is set
     LaunchedEffect(authenticatedEmail) {
         authenticatedEmail?.let { email ->
-            sharedPreferences.edit().putString("current_user", email).apply()
-            val savedEggId = sharedPreferences.getInt("${email}_eggId", -1)
-            
-            val destination = if (savedEggId != -1) "homescreen" else "eggscreen"
-            Log.d("Auth", "Navigation Triggered: $destination for user: $email")
-            
-            navController.navigate(destination) {
-                popUpTo("loginscreen") { inclusive = true }
+            val userId = auth.currentUser?.uid
+            if (userId != null) {
+                val db = FirebaseFirestore.getInstance()
+                db.collection("users").document(userId).get()
+                    .addOnSuccessListener { document ->
+                        val savedEggId = document.getLong("eggId")?.toInt() ?: -1
+                        val destination = if (savedEggId != -1) "homescreen" else "eggscreen"
+                        
+                        Log.d("Auth", "Navigation Triggered: $destination for user: $email")
+                        navController.navigate(destination) {
+                            popUpTo("loginscreen") { inclusive = true }
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e("Auth", "Error fetching user data", e)
+                        // Fallback to eggscreen if we can't fetch data
+                        navController.navigate("eggscreen") {
+                            popUpTo("loginscreen") { inclusive = true }
+                        }
+                    }
             }
         }
     }
@@ -311,18 +322,19 @@ fun LogInScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             //this is if the user wants to manually log in instead of using google
-            //used sharedPreferences to store the users email and password
+            //used Firebase to store the users email and password
             Button(
                 onClick = {
-                    val registeredPassword = sharedPreferences.getString(emailInput, null)
+                   // val registeredPassword = sharedPreferences.getString(emailInput, null)
                     if (emailInput.isNotBlank() && passInput.isNotBlank()) {
-                        if (registeredPassword == null) {
-                            errorMessage = "Email not recognized."
-                        } else if (registeredPassword != passInput) {
-                            errorMessage = "Incorrect password."
-                        } else {
-                            authenticatedEmail = emailInput
-                        }
+                        auth.signInWithEmailAndPassword(emailInput, passInput)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    authenticatedEmail = emailInput
+                                } else {
+                                    errorMessage = "Invalid email or password."
+                                }
+                            }
                     } else {
                         errorMessage = "Please fill in all fields."
                     }
@@ -367,10 +379,8 @@ fun SignUpScreen(
     labelText: String = "Email",
     labelText1: String = "Password",
 ) {
-    //once again used sharedPreferences to store the users email and password associated with their account
-    val context = LocalContext.current
-    val sharedPreferences = remember { context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE) }
-
+    //once again used Firebase to store the users email and password associated with their account
+    val auth = FirebaseAuth.getInstance()
     var emailInput by remember { mutableStateOf("") }
     var passInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
@@ -450,11 +460,16 @@ fun SignUpScreen(
             Button(
                 onClick = {
                     if (emailInput.isNotBlank() && passInput.isNotBlank()) {
-                        sharedPreferences.edit().apply {
-                            putString(emailInput, passInput)
-                            apply()
-                        }
-                        navController.navigate("loginscreen")
+                        auth.createUserWithEmailAndPassword(emailInput, passInput)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    // Success! Navigate back to login
+                                    navController.navigate("loginscreen")
+                                } else {
+                                    // Show error (e.g., "Email already in use" or "Password too short")
+                                    errorMessage = task.exception?.message ?: "Registration failed."
+                                }
+                            }
                     } else {
                         errorMessage = "Please fill in all fields."
                     }
