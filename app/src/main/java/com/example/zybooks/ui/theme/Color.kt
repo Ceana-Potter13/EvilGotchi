@@ -21,3 +21,14 @@ val DarkRed = Color(0xFF7A1F1F)
 val SoftWhite = Color(0xFFEAEAEA)
 
 val MutedGray = Color(0xFF9A9A9A)
+
+// Kola's Stats Colors
+val HungerGreen = Color(0xFF2E7D32)
+val HungerGreenDark = Color(0xFF1B5E20)
+val HydrationBlue = Color(0xFF1976D2)
+val HydrationBlueDark = Color(0xFF0D47A1)
+val HappinessYellow = Color(0xFFFBC02D)
+val HappinessYellowDark = Color(0xFFF57F17)
+
+val PlainWhite = Color(0xFFFFFFFF)
+val PlainBlack = Color(0xFF000000)
