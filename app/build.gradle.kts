@@ -34,6 +34,23 @@ android {
     buildFeatures {
         compose = true
     }
+
+    signingConfigs {
+        create("sharedDebug") {
+            // This path is relative to the 'app' directory
+            storeFile = file("keystores/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("sharedDebug")
+        }
+    }
+
 }
 
 dependencies {
