@@ -1,6 +1,6 @@
 package com.example.zybooks.ui.theme.ui
 
-import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,12 +21,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,7 +35,12 @@ import com.example.zybooks.R
 import com.example.zybooks.ui.theme.MutedCrimson
 import com.example.zybooks.ui.theme.NuniitoFontFamily
 import com.example.zybooks.ui.theme.SoftWhite
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 
+//this is the screen to show the egg hatching and confirming your choice. once you press the button,
+//the egg you picked is stored in the cloud on firebase so on different devices your information is
+//saved
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EggHatch(
@@ -47,8 +50,6 @@ fun EggHatch(
     viewModel: EggViewModel = EggViewModel()
 ) {
     val egg = viewModel.getEgg(eggId)
-    val context = LocalContext.current
-    val sharedPreferences = remember { context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE) }
 
     Scaffold(
         modifier = modifier,
@@ -133,17 +134,33 @@ fun EggHatch(
             Spacer(modifier = Modifier.height(24.dp))
 
             //this is the button i used to navigate to the homescreen
+            //this button also saves your sprite choice in firebase
             //**** WHOEVER CODES THE HOMESCREEN, MAKE SURE THE ROUTE NAMES MATCH SO
             //THE APP DOESN'T CRASH!!***
             Button(
                 onClick = {
-                    // Save the eggId for the current logged-in user
-                    val currentUser = sharedPreferences.getString("current_user", null)
-                    if (currentUser != null) {
-                        sharedPreferences.edit().putInt("${currentUser}_eggId", eggId).apply()
-                    }
+                    val auth = FirebaseAuth.getInstance()
+                    val db = FirebaseFirestore.getInstance()
+                    val userId = auth.currentUser?.uid
 
-                    navController.navigate("homescreen")
+                    if (userId != null) {
+                        val userData = hashMapOf(
+                            "eggId" to eggId
+                        )
+                        db.collection("users").document(userId)
+                            .set(userData)
+                            .addOnSuccessListener {
+                                Log.d("Firestore", "Egg ID successfully saved!")
+                                navController.navigate("homescreen")
+                            }
+                            .addOnFailureListener { e ->
+                                Log.w("Firestore", "Error saving Egg ID", e)
+                                // Still navigate or show error
+                                navController.navigate("homescreen")
+                            }
+                    } else {
+                        navController.navigate("homescreen")
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
