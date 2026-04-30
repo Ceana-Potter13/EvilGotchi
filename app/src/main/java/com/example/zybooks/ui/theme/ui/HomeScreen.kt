@@ -1,13 +1,24 @@
 package com.example.zybooks.ui.theme.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.view.Surface
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageProxy
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -18,14 +29,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.zybooks.R
 import com.example.zybooks.ui.theme.*
@@ -43,6 +58,17 @@ fun HomeScreen(navController: NavController) {
     
     val sharedPrefs = remember { context.getSharedPreferences("EvilGotchiPrefs", Context.MODE_PRIVATE) }
     
+    // --- CAMERA STATE ---
+    var isCameraActive by remember { mutableStateOf(false) }
+    val imageCapture = remember { ImageCapture.Builder().build() }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isCameraActive = true
+        }
+    }
+
     // --- PET STATS ---
     var hunger by remember { mutableIntStateOf(100) }
     var hydration by remember { mutableIntStateOf(100) }
@@ -83,7 +109,7 @@ fun HomeScreen(navController: NavController) {
             val tickRate = if (isFastForwarding) 1000L else 60000L
             docRef.get().addOnSuccessListener { snapshot ->
                 val currentTime = System.currentTimeMillis()
-                
+
                 if (snapshot.exists()) {
                     val savedHunger = snapshot.getLong("hunger")?.toInt() ?: 100
                     val savedHydration = snapshot.getLong("hydration")?.toInt() ?: 100
@@ -101,10 +127,10 @@ fun HomeScreen(navController: NavController) {
 
                     if (isFastForwarding) {
                         if (!isTimeFrozen) {
-                            lastDecayTime -= 59000L
+                            lastDecayTime -= 179000L
                         }
-                        lastGrowthTime -= 59000L
-                        lastHappinessDecayTime -= 59000L
+                        lastGrowthTime -= 179000L
+                        lastHappinessDecayTime -= 179000L
                     }
 
                     val decayMinutes = ((currentTime - lastDecayTime) / 60000).toInt()
@@ -133,7 +159,7 @@ fun HomeScreen(navController: NavController) {
                         val growthTicks = growthMinutes / 5
                         if (currentHunger > 50 && currentHydration > 50) {
                             currentHappiness += (growthTicks * 5)
-                            
+
                             while (currentHappiness >= 100 && currentStage != "Elder") {
                                 currentHappiness -= 100
                                 currentStage = when (currentStage) {
@@ -142,7 +168,7 @@ fun HomeScreen(navController: NavController) {
                                     "Adult" -> "Elder"
                                     else -> currentStage
                                 }
-                                
+
                                 val stageList = listOf("Baby", "Teen", "Adult", "Elder")
                                 val currentIdx = stageList.indexOf(currentStage)
                                 val highestStored = sharedPrefs.getString("highest_stage_${userId}", "Baby") ?: "Baby"
@@ -151,9 +177,9 @@ fun HomeScreen(navController: NavController) {
                                     sharedPrefs.edit().putString("highest_stage_${userId}", currentStage).apply()
                                 }
                             }
-                            
+
                             if (currentStage == "Elder" && currentHappiness > 100) {
-                                currentHappiness = 100 
+                                currentHappiness = 100
                             }
                         }
                         newLastGrowthTime += (growthTicks * 5 * 60000L)
@@ -164,7 +190,7 @@ fun HomeScreen(navController: NavController) {
                         var decayAmount = 0
                         if (currentHunger < 50) decayAmount += happinessDecayMinutes
                         if (currentHydration < 50) decayAmount += happinessDecayMinutes
-                        
+
                         if (decayAmount > 0) {
                             currentHappiness = (currentHappiness - decayAmount).coerceAtLeast(0)
                         }
@@ -244,24 +270,20 @@ fun HomeScreen(navController: NavController) {
             val statsOverlayHeight = if (!isLandscape) 260.dp else 0.dp
 
             // --- DYNAMIC PET SIZE ---
-            // Base size is relative to screen width, but capped for large screens.
-            val baseSize = (screenWidth * 0.5f).coerceAtMost(350.dp)
-            val stageMultiplier = when (petStage) {
-                "Baby" -> 0.7f
-                "Teen" -> 0.85f
-                "Adult" -> 1.0f
-                "Elder" -> 1.1f
-                else -> 1.0f
-            }
-            val finalPetSize = baseSize * stageMultiplier
+            val petData = getPetData(eggId, petStage)
+            val finalPetSize = petData.second
 
             // --- BACKGROUND IMAGE ---
-            Image(
-                painter = painterResource(id = R.drawable.training_stage3),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
-            )
+            if (isCameraActive) {
+                CameraPreview(imageCapture = imageCapture)
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.training_stage3),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            }
 
             if (!isLandscape) {
                 NavBar(navController = navController, selectedIndex = 1)
@@ -310,16 +332,16 @@ fun HomeScreen(navController: NavController) {
                     // Max X excludes the Stats Overlay in Landscape.
                     // Min Y excludes the NavBar in Portrait.
                     // Max Y excludes the Stats Overlay in Portrait.
-                    
+
                     val minXLimit = 10.dp
                     val maxXLimit = (screenWidth - statsOverlayWidth - finalPetSize - 10.dp).coerceAtLeast(minXLimit + 20.dp)
-                    
+
                     val minYLimit = navBarTopHeight + 20.dp
                     val maxYLimit = (screenHeight - statsOverlayHeight - finalPetSize - 10.dp).coerceAtLeast(minYLimit + 20.dp)
 
                     targetX = Random.nextInt(minXLimit.value.toInt(), maxXLimit.value.toInt()).dp
                     targetY = Random.nextInt(minYLimit.value.toInt(), maxYLimit.value.toInt()).dp
-                    
+
                     delay(Random.nextLong(4000, 8000))
                 }
             }
@@ -336,7 +358,6 @@ fun HomeScreen(navController: NavController) {
             EvilGotchiPet(
                 eggId = eggId,
                 petStage = petStage,
-                baseSize = finalPetSize,
                 modifier = Modifier
                     .offset(x = animX, y = animY + bobOffset.dp)
                     .rotate(rotationAnimatable.value)
@@ -369,15 +390,57 @@ fun HomeScreen(navController: NavController) {
                                 onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
                                 onFastForwardChange = { isFastForwarding = it }
                             )
+                            
+                            // Evolution Utility
                             Image(
                                 painter = painterResource(id = R.drawable.gotchi_progress),
                                 contentDescription = "Progress",
-                                modifier = Modifier.size(50.dp).clickable { }
+                                modifier = Modifier.size(50.dp).clickable { 
+                                    navController.navigate("evolutionscreen")
+                                }
                             )
+                            
                             Image(
                                 painter = painterResource(id = R.drawable.camerabutton),
                                 contentDescription = "Camera",
-                                modifier = Modifier.size(50.dp).clickable { }
+                                modifier = Modifier.size(50.dp).clickable {
+                                    if (!isCameraActive) {
+                                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                            isCameraActive = true
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    } else {
+                                        val mainExecutor = ContextCompat.getMainExecutor(context)
+                                        imageCapture.targetRotation = Surface.ROTATION_0
+                                        imageCapture.takePicture(mainExecutor, object : ImageCapture.OnImageCapturedCallback() {
+                                            override fun onCaptureSuccess(image: ImageProxy) {
+                                                val bitmap = imageProxyToBitmap(image)
+                                                image.close()
+
+                                                val petRes = getPetResource(eggId, petStage)
+                                                val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
+
+                                                val finalPetBitmap = if (!isMovingRight) {
+                                                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                                                    Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
+                                                } else petBitmap
+
+                                                val overlaid = overlayBitmap(
+                                                    baseBitmap = bitmap,
+                                                    overlayBitmap = finalPetBitmap,
+                                                    x = (animX.value / screenWidth.value) * bitmap.width,
+                                                    y = (animY.value / screenHeight.value) * bitmap.height,
+                                                    scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
+                                                )
+
+                                                saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
+                                                isCameraActive = false
+                                            }
+                                        })
+                                    }
+                                }
                             )
                             Text(
                                 text = "$ $coins",
@@ -402,11 +465,37 @@ fun HomeScreen(navController: NavController) {
                         horizontalAlignment = Alignment.End
                     ) {
                         Box(modifier = Modifier.padding(end = 16.dp, bottom = 8.dp)) {
-                            DevToolsRow(
-                                isTimeFrozen = isTimeFrozen,
-                                onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
-                                onFastForwardChange = { isFastForwarding = it }
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Fast Forward Utility (Dev Tool)
+                                Image(
+                                    painter = painterResource(id = R.drawable.dev_fastforwardbutton),
+                                    contentDescription = "Fast Forward",
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onPress = {
+                                                    isFastForwarding = true
+                                                    tryAwaitRelease()
+                                                    isFastForwarding = false
+                                                }
+                                            )
+                                        }
+                                )
+                                
+                                // Time Freeze (Dev Tool)
+                                Image(
+                                    painter = painterResource(id = R.drawable.dev_frozentime),
+                                    contentDescription = "Freeze Time",
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clickable { isTimeFrozen = !isTimeFrozen },
+                                    colorFilter = ColorFilter.tint(if (isTimeFrozen) Color.Green else Color.Red)
+                                )
+                            }
                         }
 
                         Row(
@@ -444,13 +533,52 @@ fun HomeScreen(navController: NavController) {
                                 Image(
                                     painter = painterResource(id = R.drawable.gotchi_progress),
                                     contentDescription = "Progress",
-                                    modifier = Modifier.size(50.dp).clickable { }
+                                    modifier = Modifier.size(50.dp).clickable { 
+                                        navController.navigate("evolutionscreen")
+                                    }
                                 )
                                 Image(
                                     painter = painterResource(id = R.drawable.camerabutton),
                                     contentDescription = "Camera",
-                                    modifier = Modifier.size(50.dp).clickable { }
-                                )
+                                    modifier = Modifier.size(50.dp).clickable {
+                                    if (!isCameraActive) {
+                                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                            isCameraActive = true
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    } else {
+                                        val mainExecutor = ContextCompat.getMainExecutor(context)
+                                        imageCapture.targetRotation = Surface.ROTATION_0
+                                        imageCapture.takePicture(mainExecutor, object : ImageCapture.OnImageCapturedCallback() {
+                                            override fun onCaptureSuccess(image: ImageProxy) {
+                                                val bitmap = imageProxyToBitmap(image)
+                                                image.close()
+
+                                                val petRes = getPetResource(eggId, petStage)
+                                                val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
+
+                                                val finalPetBitmap = if (!isMovingRight) {
+                                                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                                                    Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
+                                                } else petBitmap
+
+                                                val overlaid = overlayBitmap(
+                                                    baseBitmap = bitmap,
+                                                    overlayBitmap = finalPetBitmap,
+                                                    x = (animX.value / screenWidth.value) * bitmap.width,
+                                                    y = (animY.value / screenHeight.value) * bitmap.height,
+                                                    scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
+                                                )
+
+                                                saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
+                                                isCameraActive = false
+                                            }
+                                        })
+                                    }
+                                }
+                            )
                             }
                         }
                     }
@@ -504,41 +632,47 @@ fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, iconRes:
 }
 
 @Composable
-fun EvilGotchiPet(eggId: Int, petStage: String, baseSize: Dp, modifier: Modifier = Modifier) {
-    val petResource = when (petStage) {
-        "Teen" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willteen // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
-        }
-        "Adult" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willadult // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
-        }
-        "Elder" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willelder // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
-        }
-        else -> when (eggId) { // "Baby"
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willbaby // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
-        }
-    }
-    
+fun EvilGotchiPet(eggId: Int, petStage: String, modifier: Modifier = Modifier) {
+    val petData = getPetData(eggId, petStage)
+
     Image(
-        painter = painterResource(id = petResource),
+        painter = painterResource(id = petData.first),
         contentDescription = "Your EvilGotchi",
-        modifier = modifier.size(baseSize)
+        modifier = modifier.size(petData.second)
     )
 }
+
+fun getPetData(eggId: Int, petStage: String): Pair<Int, Dp> {
+    return when (petStage) {
+        "Teen" -> when (eggId) {
+            1 -> R.drawable.paytonteen to 200.dp // Payton
+            2 -> R.drawable.ceanateen to 200.dp// Ceaana
+            3 -> R.drawable.willteen to 200.dp // Will
+            4 -> R.drawable.kolateen to 300.dp // Kola
+            else -> R.drawable.babykuna to 150.dp
+        }
+        "Adult" -> when (eggId) {
+            1 -> R.drawable.paytonadult to 250.dp // Payton
+            2 -> R.drawable.ceanaadult to 250.dp // Ceaana
+            3 -> R.drawable.willadult to 250.dp // Will
+            4 -> R.drawable.kolaadult to 450.dp // Kola
+            else -> R.drawable.babykuna to 200.dp
+        }
+        "Elder" -> when (eggId) {
+            1 -> R.drawable.paytonelder to 300.dp// Payton
+            2 -> R.drawable.ceanaelder to 300.dp // Ceaana
+            3 -> R.drawable.willelder to 300.dp // Will
+            4 -> R.drawable.kolaelder to 600.dp // Kola
+            else -> R.drawable.babykuna to 250.dp
+        }
+        else -> when (eggId) { // "Baby"
+            1 -> R.drawable.paytonbaby to 120.dp // Payton
+            2 -> R.drawable.ceanababy to 120.dp // Ceaana
+            3 -> R.drawable.willbaby to 120.dp // Will
+            4 -> R.drawable.babykuna to 220.dp // Kola
+            else -> R.drawable.babykuna to 120.dp
+        }
+    }
+}
+
+fun getPetResource(eggId: Int, petStage: String): Int = getPetData(eggId, petStage).first
