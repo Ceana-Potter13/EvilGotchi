@@ -5,16 +5,15 @@ import androidx.lifecycle.ViewModel
 import com.example.zybooks.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+
 
 data class ShopSlot(
-    val id: String, // Changed to String for unique naming like "FOOD_0"
+    val id: String,
     val imageRes: Int? = null,
     val price: Int = 0
 )
@@ -100,7 +99,6 @@ class ShopViewModel : ViewModel() {
                 "coins" to (currentCoins - slot.price)
             )
 
-            // Identify which stat to increase based on the item ID prefix and cap at 100
             when {
                 slot.id.startsWith("FOOD_") -> {
                     val currentHunger = snapshot.getLong("hunger") ?: 0L
@@ -120,7 +118,7 @@ class ShopViewModel : ViewModel() {
             null
         }.addOnSuccessListener {
             onSuccess()
-            _selectedSlot.value = null // Deselect after purchase
+            _selectedSlot.value = null
         }.addOnFailureListener {
             onFailure(it.message ?: "Purchase failed")
         }
