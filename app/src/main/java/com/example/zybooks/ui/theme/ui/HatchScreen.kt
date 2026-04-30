@@ -145,7 +145,8 @@ fun EggHatch(
 
                     if (userId != null) {
                         val userData = hashMapOf(
-                            "eggId" to eggId
+                            "eggId" to eggId,
+                            "petStage" to "Baby"
                         )
                         db.collection("users").document(userId)
                             .set(userData)
