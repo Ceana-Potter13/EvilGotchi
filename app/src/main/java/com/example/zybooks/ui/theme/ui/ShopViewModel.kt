@@ -11,8 +11,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class ShopSlot(
-    val imageRes: Int? = null,
-    val price: Int = 0
+    val id: String,
+    val imageRes: Int?,
+    val price: Int = 0,
+    val amount: Int = 0,
+    val statAffected: String? = null // "hunger", "hydration", or null for toys/cosmetics
 )
 
 data class ShopRow(
@@ -30,37 +33,35 @@ class ShopViewModel : ViewModel() {
 
     private val _rows = MutableStateFlow<List<ShopRow>>(
         listOf(
-            // Row 0: FOOD (Unique IDs: FOOD_0, FOOD_1, etc.)
-            ShopRow(0, "FOOD", List(4) { ShopSlot("FOOD_$it", price = (it + 1) * 5) }),
+            // Row 0: FOOD
+            ShopRow(0, "FOOD", listOf(
+                ShopSlot("FOOD_0", R.drawable.food1, price = 5, amount = 10, statAffected = "hunger"),
+                ShopSlot("FOOD_1", R.drawable.food2, price = 10, amount = 25, statAffected = "hunger"),
+                ShopSlot("FOOD_2", R.drawable.food3, price = 15, amount = 40, statAffected = "hunger"),
+                ShopSlot("FOOD_3", R.drawable.food4, price = 20, amount = 60, statAffected = "hunger")
+            )),
 
             // Row 1: HYDRATION
             ShopRow(1, "HYDRATION", listOf(
-                ShopSlot("DRINK_0", R.drawable.shopdrink1, 5),
-                ShopSlot("DRINK_1", R.drawable.shopdrink2, 10),
-                ShopSlot("DRINK_2", R.drawable.shopdrink3, 15),
-                ShopSlot("DRINK_3", R.drawable.shopdrink4, 20)
+                ShopSlot("DRINK_0", R.drawable.shopdrink1, price = 5, amount = 10, statAffected = "hydration"),
+                ShopSlot("DRINK_1", R.drawable.shopdrink2, price = 10, amount = 25, statAffected = "hydration"),
+                ShopSlot("DRINK_2", R.drawable.shopdrink3, price = 15, amount = 40, statAffected = "hydration"),
+                ShopSlot("DRINK_3", R.drawable.shopdrink4, price = 20, amount = 60, statAffected = "hydration")
             )),
 
             // Row 2: TOYS
             ShopRow(2, "TOYS", listOf(
-                ShopSlot("TOY_0", R.drawable.shoptoy1, 5),
+                ShopSlot("TOY_0", R.drawable.shoptoy1, 10),
                 ShopSlot("TOY_1", R.drawable.shoptoy2, 10),
-                ShopSlot("TOY_2", R.drawable.shoptoy3, 15),
-            )),
-
-            // Row 3: COSMETICS
-            ShopRow(3, "COSMETICS", listOf(
-                ShopSlot("COSM_0", R.drawable.shopcosmetic1, 5),
-                ShopSlot("COSM_1", R.drawable.shopcosmetic2, 10),
-                ShopSlot("COSM_2", price = 15),
-                ShopSlot("COSM_3", price = 20)
+                ShopSlot("TOY_2", R.drawable.shoptoy3, 10),
+                ShopSlot("TOY_3", R.drawable.shoptoy4, 10)
             ))
         )
     )
-    val rows: StateFlow<List<ShopRow>> = _rows
+    val rows: StateFlow<List<ShopRow>> = _rows.asStateFlow()
 
     private val _selectedSlot = MutableStateFlow<ShopSlot?>(null)
-    val selectedSlot: StateFlow<ShopSlot?> = _selectedSlot
+    val selectedSlot: StateFlow<ShopSlot?> = _selectedSlot.asStateFlow()
 
     init {
         listenToUserCoins()
@@ -81,10 +82,34 @@ class ShopViewModel : ViewModel() {
 
     fun purchaseItem(slot: ShopSlot, onSuccess: () -> Unit = {}, onFailure: (String) -> Unit = {}) {
         val userId = auth.currentUser?.uid ?: return
-        }
+        val userDocRef = db.collection("users").document(userId)
 
-                onSuccess()
-                onFailure(it.message ?: "Purchase failed")
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(userDocRef)
+            val currentCoins = snapshot.getLong("coins") ?: 0L
+            
+            if (currentCoins >= slot.price) {
+                // Deduct coins
+                transaction.update(userDocRef, "coins", currentCoins - slot.price)
+                
+                // Update hunger or hydration if applicable
+                slot.statAffected?.let { stat ->
+                    val currentStatValue = snapshot.getLong(stat) ?: 100L
+                    val newValue = (currentStatValue + slot.amount).coerceAtMost(100L)
+                    transaction.update(userDocRef, stat, newValue)
+                }
+
+                // Future: add to inventory for toys/cosmetics
+                // if (slot.statAffected == null) {
+                //    transaction.update(userDocRef, "inventory", FieldValue.arrayUnion(slot.id))
+                // }
+            } else {
+                throw FirebaseFirestoreException("Insufficient coins", FirebaseFirestoreException.Code.ABORTED)
             }
+        }.addOnSuccessListener {
+            onSuccess()
+        }.addOnFailureListener {
+            onFailure(it.message ?: "Purchase failed")
+        }
     }
 }
