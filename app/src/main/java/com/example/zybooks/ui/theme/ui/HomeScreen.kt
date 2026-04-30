@@ -23,11 +23,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.example.zybooks.R
 import com.example.zybooks.ui.theme.*
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
@@ -38,14 +41,167 @@ fun HomeScreen(navController: NavController) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     
-    val sharedPreferences = remember { context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE) }
-    val userEmail = sharedPreferences.getString("current_user", "")
-    val eggId = sharedPreferences.getInt("${userEmail}_eggId", 1)
-
+    val sharedPrefs = remember { context.getSharedPreferences("EvilGotchiPrefs", Context.MODE_PRIVATE) }
+    
     // --- PET STATS ---
-    val hunger = sharedPreferences.getInt("${userEmail}_hunger", 100)
-    val hydration = sharedPreferences.getInt("${userEmail}_hydration", 100)
-    val happiness = sharedPreferences.getInt("${userEmail}_happiness", 0)
+    var hunger by remember { mutableIntStateOf(100) }
+    var hydration by remember { mutableIntStateOf(100) }
+    var happiness by remember { mutableIntStateOf(0) }
+    var coins by remember { mutableIntStateOf(0) }
+    var petStage by remember { mutableStateOf("Baby") }
+    var eggId by remember { mutableIntStateOf(1) }
+
+    var isTimeFrozen by remember { mutableStateOf(false) }
+    var isFastForwarding by remember { mutableStateOf(false) }
+
+    val auth = FirebaseAuth.getInstance()
+    val db = FirebaseFirestore.getInstance()
+
+    LaunchedEffect(Unit) {
+        val userId = auth.currentUser?.uid ?: return@LaunchedEffect
+        val docRef = db.collection("users").document(userId)
+
+        // listener for UI updates
+        docRef.addSnapshotListener { snapshot, _ ->
+            if (snapshot != null && snapshot.exists()) {
+                coins = snapshot.getLong("coins")?.toInt() ?: 0
+                snapshot.getLong("hunger")?.toInt()?.let { hunger = it }
+                snapshot.getLong("hydration")?.toInt()?.let { hydration = it }
+                snapshot.getLong("happiness")?.toInt()?.let { happiness = it }
+                snapshot.getString("petStage")?.let { petStage = it }
+                snapshot.getLong("eggId")?.toInt()?.let { eggId = it }
+            }
+        }
+    }
+
+    LaunchedEffect(isFastForwarding, isTimeFrozen) {
+        val userId = auth.currentUser?.uid ?: return@LaunchedEffect
+        val docRef = db.collection("users").document(userId)
+
+        // Continuous decay loop
+        while (true) {
+            val tickRate = if (isFastForwarding) 1000L else 60000L
+            docRef.get().addOnSuccessListener { snapshot ->
+                val currentTime = System.currentTimeMillis()
+                
+                if (snapshot.exists()) {
+                    val savedHunger = snapshot.getLong("hunger")?.toInt() ?: 100
+                    val savedHydration = snapshot.getLong("hydration")?.toInt() ?: 100
+                    val savedHappiness = snapshot.getLong("happiness")?.toInt() ?: 0
+                    val savedStage = snapshot.getString("petStage") ?: "Baby"
+                    
+                    var lastDecayTime = snapshot.getLong("lastDecayTime") ?: currentTime
+                    var lastGrowthTime = snapshot.getLong("lastGrowthTime") ?: currentTime
+                    var lastHappinessDecayTime = snapshot.getLong("lastHappinessDecayTime") ?: currentTime
+
+                    // If time is frozen, keep pushing lastDecayTime forward so hunger/thirst never decay.
+                    if (isTimeFrozen) {
+                        lastDecayTime = currentTime
+                    }
+
+                    if (isFastForwarding) {
+                        if (!isTimeFrozen) {
+                            lastDecayTime -= 59000L
+                        }
+                        lastGrowthTime -= 59000L
+                        lastHappinessDecayTime -= 59000L
+                    }
+
+                    val decayMinutes = ((currentTime - lastDecayTime) / 60000).toInt()
+                    val growthMinutes = ((currentTime - lastGrowthTime) / 60000).toInt()
+                    val happinessDecayMinutes = ((currentTime - lastHappinessDecayTime) / 60000).toInt()
+
+                    var currentHunger = savedHunger
+                    var currentHydration = savedHydration
+                    var currentHappiness = savedHappiness
+                    var currentStage = savedStage
+                    var updated = false
+
+                    var newLastDecayTime = lastDecayTime
+                    var newLastGrowthTime = lastGrowthTime
+                    var newLastHappinessDecayTime = lastHappinessDecayTime
+
+                    if (decayMinutes >= 2) {
+                        val decayTicks = decayMinutes / 2
+                        currentHunger = (currentHunger - decayTicks).coerceAtLeast(0)
+                        currentHydration = (currentHydration - decayTicks).coerceAtLeast(0)
+                        newLastDecayTime += (decayTicks * 2 * 60000L)
+                        updated = true
+                    }
+
+                    if (growthMinutes >= 5) {
+                        val growthTicks = growthMinutes / 5
+                        if (currentHunger > 50 && currentHydration > 50) {
+                            currentHappiness += (growthTicks * 5)
+                            
+                            while (currentHappiness >= 100 && currentStage != "Elder") {
+                                currentHappiness -= 100
+                                currentStage = when (currentStage) {
+                                    "Baby" -> "Teen"
+                                    "Teen" -> "Adult"
+                                    "Adult" -> "Elder"
+                                    else -> currentStage
+                                }
+                                
+                                val stageList = listOf("Baby", "Teen", "Adult", "Elder")
+                                val currentIdx = stageList.indexOf(currentStage)
+                                val highestStored = sharedPrefs.getString("highest_stage_${userId}", "Baby") ?: "Baby"
+                                val highestIdx = stageList.indexOf(highestStored)
+                                if (currentIdx > highestIdx) {
+                                    sharedPrefs.edit().putString("highest_stage_${userId}", currentStage).apply()
+                                }
+                            }
+                            
+                            if (currentStage == "Elder" && currentHappiness > 100) {
+                                currentHappiness = 100 
+                            }
+                        }
+                        newLastGrowthTime += (growthTicks * 5 * 60000L)
+                        updated = true
+                    }
+                    
+                    if (happinessDecayMinutes >= 1) {
+                        var decayAmount = 0
+                        if (currentHunger < 50) decayAmount += happinessDecayMinutes
+                        if (currentHydration < 50) decayAmount += happinessDecayMinutes
+                        
+                        if (decayAmount > 0) {
+                            currentHappiness = (currentHappiness - decayAmount).coerceAtLeast(0)
+                        }
+                        newLastHappinessDecayTime += (happinessDecayMinutes * 60000L)
+                        updated = true
+                    }
+
+                    if (updated || isFastForwarding) {
+                        docRef.update(
+                            mapOf(
+                                "hunger" to currentHunger,
+                                "hydration" to currentHydration,
+                                "happiness" to currentHappiness,
+                                "petStage" to currentStage,
+                                "lastDecayTime" to newLastDecayTime,
+                                "lastGrowthTime" to newLastGrowthTime,
+                                "lastHappinessDecayTime" to newLastHappinessDecayTime
+                            )
+                        )
+                    } else if (!snapshot.contains("hunger")) {
+                        docRef.update(
+                            mapOf(
+                                "hunger" to 100,
+                                "hydration" to 100,
+                                "happiness" to 0,
+                                "petStage" to "Baby",
+                                "lastDecayTime" to currentTime,
+                                "lastGrowthTime" to currentTime,
+                                "lastHappinessDecayTime" to currentTime
+                            )
+                        )
+                    }
+                }
+            }
+            delay(tickRate)
+        }
+    }
 
     var isMovingRight by remember { mutableStateOf(true) }
 
@@ -68,199 +224,259 @@ fun HomeScreen(navController: NavController) {
         }
     }
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
-    ) {
-        val screenWidth = maxWidth
-        val screenHeight = maxHeight
-        val barSize = if (isLandscape) screenWidth * 0.1f else screenHeight * 0.1f
-        val actionBoxSize = barSize * 0.4f
-
-        val statsAreaHeight = if (!isLandscape) screenHeight * 0.25f else 0.dp
-        val statsAreaWidth = if (isLandscape) screenWidth * 0.35f else 0.dp
-
-        // --- EVILGOTCHI SIZE & ANIMATION ---
-        val petBaseSize = 400.dp
-        
-        // tracking target positions for the pet to wander to
-        var targetX by remember { mutableStateOf(screenWidth / 2 - 125.dp) }
-        var targetY by remember { mutableStateOf(screenHeight / 2) }
-
-        //  animations
-        val animX by animateDpAsState(
-            targetValue = targetX,
-            animationSpec = tween(Random.nextInt(2000, 4000), easing = LinearOutSlowInEasing),
-            label = "petX"
-        )
-        val animY by animateDpAsState(
-            targetValue = targetY,
-            animationSpec = tween(Random.nextInt(2000, 4000), easing = LinearOutSlowInEasing),
-            label = "petY"
-        )
-        
-        // checking the direction based on next movement
-        LaunchedEffect(targetX) {
-            if (targetX > animX) {
-                isMovingRight = true
-            } else if (targetX < animX) {
-                isMovingRight = false
-            }
-        }
-        
-        // the bobbing effect
-        val infiniteTransition = rememberInfiniteTransition(label = "bob")
-        val bobOffset by infiniteTransition.animateFloat(
-            initialValue = -5f,
-            targetValue = 5f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(1000, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "bobOffset"
-        )
-
-        // random wandering logic
-        LaunchedEffect(isLandscape) {
-            while (true) {
-                // bings gotchi to within viewable area
-
-                // Left margin (navbar in landscape or just edge in portrait)
-                val minX = if (isLandscape) barSize + 10.dp else 10.dp
-                // Right margin (stats area in landscape or just edge in portrait)
-                val maxX = if (isLandscape) screenWidth - statsAreaWidth - 200.dp else screenWidth - 200.dp
-                
-                // Top margin (navbar in portrait or just edge in landscape)
-                val minY = if (isLandscape) 10.dp else barSize + 60.dp
-                // Bottom margin (stats area in portrait or just edge in landscape)
-                val maxY = if (isLandscape) screenHeight - 200.dp else screenHeight - statsAreaHeight - 200.dp
-
-                val startX = minX.value.toInt()
-                val endX = maxX.value.toInt().coerceAtLeast(startX + 50)
-                val startY = minY.value.toInt()
-                val endY = maxY.value.toInt().coerceAtLeast(startY + 50)
-
-                targetX = Random.nextInt(startX, endX).dp
-                targetY = Random.nextInt(startY, endY).dp
-                
-                delay(Random.nextLong(3000, 6000))
-            }
+    Row(modifier = Modifier.fillMaxSize()) {
+        if (isLandscape) {
+            NavBar(navController = navController, selectedIndex = 1)
         }
 
-        // depth effect i.e. gets smaller as it goes "up" (smaller Y)
-        val topLimit = if (isLandscape) 0.dp else barSize + 50.dp
-        val bottomLimit = if (isLandscape) screenHeight else screenHeight - statsAreaHeight
-        val verticalProgress = ((animY - topLimit) / (bottomLimit - topLimit)).coerceIn(0f, 1f)
-        val petScale = 0.4f + (verticalProgress * 0.6f) 
-
-        // --- PET START ---
-        EvilGotchiPet(
-            eggId = eggId,
+        BoxWithConstraints(
             modifier = Modifier
-                .offset(x = animX, y = animY + bobOffset.dp)
-                .rotate(rotationAnimatable.value)
-                .scale(petScale)
-                .graphicsLayer {
-                    // flip horizontally based on direction
-                    rotationY = if (isMovingRight) 0f else 180f
-                }
-                .size(petBaseSize)
-        )
-
-        // --- STATS & INVENTORY OVERLAY ---
-        Row(
-            modifier = Modifier
-                .then(
-                    if (isLandscape) {
-                        Modifier
-                            .align(Alignment.CenterEnd)
-                            .width(statsAreaWidth)
-                            .fillMaxHeight()
-                    } else {
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(statsAreaHeight)
-                    }
-                )
+                .weight(1f)
+                .fillMaxHeight()
         ) {
-            Column(
-                verticalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(16.dp)
-            ) {
-                StatBar(label = "Hunger", value = hunger, barColor = HungerGreen, bgColor = HungerGreenDark, isLandscape = isLandscape)
-                StatBar(label = "Hydration", value = hydration, barColor = HydrationBlue, bgColor = HydrationBlueDark, isLandscape = isLandscape)
-                StatBar(label = "Happiness", value = happiness, barColor = HappinessYellow, bgColor = HappinessYellowDark, isLandscape = isLandscape)
+            val screenWidth = maxWidth
+            val screenHeight = maxHeight
+            
+            // --- BARRIER MEASUREMENTS ---
+            // Define areas occupied by UI elements that the pet should avoid.
+            val navBarTopHeight = if (!isLandscape) 80.dp else 0.dp
+            val statsOverlayWidth = if (isLandscape) 332.dp else 0.dp
+            val statsOverlayHeight = if (!isLandscape) 260.dp else 0.dp
+
+            // --- DYNAMIC PET SIZE ---
+            // Base size is relative to screen width, but capped for large screens.
+            val baseSize = (screenWidth * 0.5f).coerceAtMost(350.dp)
+            val stageMultiplier = when (petStage) {
+                "Baby" -> 0.7f
+                "Teen" -> 0.85f
+                "Adult" -> 1.0f
+                "Elder" -> 1.1f
+                else -> 1.0f
+            }
+            val finalPetSize = baseSize * stageMultiplier
+
+            // --- BACKGROUND IMAGE ---
+            Image(
+                painter = painterResource(id = R.drawable.training_stage3),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+
+            if (!isLandscape) {
+                NavBar(navController = navController, selectedIndex = 1)
+            }
+            
+            // tracking target positions for the pet to wander to
+            var targetX by remember { mutableStateOf(screenWidth / 2 - (finalPetSize / 2)) }
+            var targetY by remember { mutableStateOf(screenHeight / 2 - (finalPetSize / 2)) }
+
+            //  animations
+            val animX by animateDpAsState(
+                targetValue = targetX,
+                animationSpec = tween(Random.nextInt(3000, 5000), easing = LinearOutSlowInEasing),
+                label = "petX"
+            )
+            val animY by animateDpAsState(
+                targetValue = targetY,
+                animationSpec = tween(Random.nextInt(3000, 5000), easing = LinearOutSlowInEasing),
+                label = "petY"
+            )
+            
+            LaunchedEffect(targetX) {
+                if (targetX > animX) {
+                    isMovingRight = true
+                } else if (targetX < animX) {
+                    isMovingRight = false
+                }
+            }
+            
+            val infiniteTransition = rememberInfiniteTransition(label = "bob")
+            val bobOffset by infiniteTransition.animateFloat(
+                initialValue = -5f,
+                targetValue = 5f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "bobOffset"
+            )
+
+            // random wandering logic with dynamic boundaries
+            LaunchedEffect(isLandscape, screenWidth, screenHeight, petStage) {
+                while (true) {
+                    // Walkable area calculation:
+                    // Min X is 10dp padding.
+                    // Max X excludes the Stats Overlay in Landscape.
+                    // Min Y excludes the NavBar in Portrait.
+                    // Max Y excludes the Stats Overlay in Portrait.
+                    
+                    val minXLimit = 10.dp
+                    val maxXLimit = (screenWidth - statsOverlayWidth - finalPetSize - 10.dp).coerceAtLeast(minXLimit + 20.dp)
+                    
+                    val minYLimit = navBarTopHeight + 20.dp
+                    val maxYLimit = (screenHeight - statsOverlayHeight - finalPetSize - 10.dp).coerceAtLeast(minYLimit + 20.dp)
+
+                    targetX = Random.nextInt(minXLimit.value.toInt(), maxXLimit.value.toInt()).dp
+                    targetY = Random.nextInt(minYLimit.value.toInt(), maxYLimit.value.toInt()).dp
+                    
+                    delay(Random.nextLong(4000, 8000))
+                }
             }
 
-            // The 3 function boxes that touch the bottom right edge
-            Column(
+            // depth effect (scaling) based on vertical position
+            val topBound = navBarTopHeight + 20.dp
+            val bottomBound = screenHeight - statsOverlayHeight - finalPetSize
+            val verticalProgress = if (bottomBound > topBound) {
+                ((animY - topBound) / (bottomBound - topBound)).coerceIn(0f, 1f)
+            } else 0f
+            val petScale = 0.5f + (verticalProgress * 0.5f) 
+
+            // --- PET START ---
+            EvilGotchiPet(
+                eggId = eggId,
+                petStage = petStage,
+                baseSize = finalPetSize,
                 modifier = Modifier
-                    .width(actionBoxSize)
-                    .fillMaxHeight(),
-                verticalArrangement = if (isLandscape) Arrangement.Center else Arrangement.SpaceEvenly,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .offset(x = animX, y = animY + bobOffset.dp)
+                    .rotate(rotationAnimatable.value)
+                    .scale(petScale)
+                    .graphicsLayer {
+                        rotationY = if (isMovingRight) 0f else 180f
+                    }
+            )
+
+            // --- STATS & INVENTORY OVERLAY ---
+            Box(
+                modifier = Modifier
+                    .align(if (isLandscape) Alignment.TopEnd else Alignment.BottomCenter)
+                    .then(if (isLandscape) Modifier.fillMaxHeight().width(332.dp) else Modifier.fillMaxWidth().height(260.dp))
+                    .background(MutedCrimson, shape = if (isLandscape) RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp) else RoundedCornerShape(0.dp))
+                    .padding(bottom = 16.dp, top = if (isLandscape) 16.dp else 8.dp, start = 16.dp, end = if (isLandscape) 16.dp else 0.dp)
             ) {
-                repeat(3) {
-                    ActionBox(size = actionBoxSize)
+                if (isLandscape) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            DevToolsRow(
+                                isTimeFrozen = isTimeFrozen,
+                                onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
+                                onFastForwardChange = { isFastForwarding = it }
+                            )
+                            Image(
+                                painter = painterResource(id = R.drawable.gotchi_progress),
+                                contentDescription = "Progress",
+                                modifier = Modifier.size(50.dp).clickable { }
+                            )
+                            Image(
+                                painter = painterResource(id = R.drawable.camerabutton),
+                                contentDescription = "Camera",
+                                modifier = Modifier.size(50.dp).clickable { }
+                            )
+                            Text(
+                                text = "$ $coins",
+                                color = HappinessYellow,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp
+                            )
+                        }
+
+                        Column(
+                            modifier = Modifier.width(300.dp).padding(bottom = 32.dp),
+                            verticalArrangement = Arrangement.spacedBy(24.dp)
+                        ) {
+                            StatBar(label = "Hunger", value = hunger, barColor = HungerGreen, bgColor = HungerGreenDark, iconRes = R.drawable.hungerbarsymbol)
+                            StatBar(label = "Thirst", value = hydration, barColor = HydrationBlue, bgColor = HydrationBlueDark, iconRes = R.drawable.thirstbarsymbol)
+                            StatBar(label = "Happiness", value = happiness, barColor = HappinessYellow, bgColor = HappinessYellowDark, iconRes = R.drawable.happinessbarsymbol)
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Box(modifier = Modifier.padding(end = 16.dp, bottom = 8.dp)) {
+                            DevToolsRow(
+                                isTimeFrozen = isTimeFrozen,
+                                onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
+                                onFastForwardChange = { isFastForwarding = it }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$ $coins",
+                                color = HappinessYellow,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f).padding(start = 32.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                StatBar(label = "Hunger", value = hunger, barColor = HungerGreen, bgColor = HungerGreenDark, iconRes = R.drawable.hungerbarsymbol)
+                                StatBar(label = "Thirst", value = hydration, barColor = HydrationBlue, bgColor = HydrationBlueDark, iconRes = R.drawable.thirstbarsymbol)
+                                StatBar(label = "Happiness", value = happiness, barColor = HappinessYellow, bgColor = HappinessYellowDark, iconRes = R.drawable.happinessbarsymbol)
+                            }
+
+                            Spacer(modifier = Modifier.width(16.dp))
+
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.gotchi_progress),
+                                    contentDescription = "Progress",
+                                    modifier = Modifier.size(50.dp).clickable { }
+                                )
+                                Image(
+                                    painter = painterResource(id = R.drawable.camerabutton),
+                                    contentDescription = "Camera",
+                                    modifier = Modifier.size(50.dp).clickable { }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
-
-        // --- NAV OVERLAY ---
-        NavBar(navController = navController, selectedIndex = 1)
     }
 }
 
 @Composable
-fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, isLandscape: Boolean) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, iconRes: Int) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
-            color = Color.Black,
+            color = Color.White,
             fontWeight = FontWeight.Bold,
-            fontSize = if (isLandscape) 10.sp else 12.sp
+            fontSize = 12.sp
         )
-        if (isLandscape) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "$value/100",
-                    color = Color.Black,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    modifier = Modifier.width(60.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(12.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(bgColor)
-                        .border(1.dp, Color.Gray, RoundedCornerShape(6.dp))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(value / 100f)
-                            .fillMaxHeight()
-                            .background(barColor)
-                    )
-                }
-            }
-        } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .weight(1f)
+                    .height(20.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(bgColor)
-                    .border(1.dp, Color.Gray, RoundedCornerShape(12.dp)),
+                    .border(1.dp, Color.Gray, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -274,36 +490,55 @@ fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, isLandsc
                     text = "$value/100",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    fontSize = 12.sp
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
+            Image(
+                painter = painterResource(id = iconRes),
+                contentDescription = label,
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
 
 @Composable
-fun ActionBox(size: androidx.compose.ui.unit.Dp) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .border(1.dp, PlainBlack)
-            .background(PlainWhite)
-            .clickable { /* logic later */ }
-    )
-}
-
-@Composable
-fun EvilGotchiPet(eggId: Int, modifier: Modifier = Modifier) {
-    val petResource = when (eggId) {
-        1 -> R.drawable.babykuna // Payton
-        2 -> R.drawable.babykuna // Ceaana
-        3 -> R.drawable.babykuna // Will
-        4 -> R.drawable.babykuna // Kola
-        else -> R.drawable.babykuna
+fun EvilGotchiPet(eggId: Int, petStage: String, baseSize: Dp, modifier: Modifier = Modifier) {
+    val petResource = when (petStage) {
+        "Teen" -> when (eggId) {
+            1 -> R.drawable.babykuna // Payton
+            2 -> R.drawable.babykuna // Ceaana
+            3 -> R.drawable.willteen // Will
+            4 -> R.drawable.babykuna // Kola
+            else -> R.drawable.babykuna
+        }
+        "Adult" -> when (eggId) {
+            1 -> R.drawable.babykuna // Payton
+            2 -> R.drawable.babykuna // Ceaana
+            3 -> R.drawable.willadult // Will
+            4 -> R.drawable.babykuna // Kola
+            else -> R.drawable.babykuna
+        }
+        "Elder" -> when (eggId) {
+            1 -> R.drawable.babykuna // Payton
+            2 -> R.drawable.babykuna // Ceaana
+            3 -> R.drawable.willelder // Will
+            4 -> R.drawable.babykuna // Kola
+            else -> R.drawable.babykuna
+        }
+        else -> when (eggId) { // "Baby"
+            1 -> R.drawable.babykuna // Payton
+            2 -> R.drawable.babykuna // Ceaana
+            3 -> R.drawable.willbaby // Will
+            4 -> R.drawable.babykuna // Kola
+            else -> R.drawable.babykuna
+        }
     }
+    
     Image(
         painter = painterResource(id = petResource),
         contentDescription = "Your EvilGotchi",
-        modifier = modifier
+        modifier = modifier.size(baseSize)
     )
 }
