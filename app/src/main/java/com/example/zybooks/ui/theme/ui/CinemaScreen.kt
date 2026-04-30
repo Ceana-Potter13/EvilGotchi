@@ -139,7 +139,7 @@ fun CinemaContent(
                 }
             }
         }
-        
+
         // NavBar as a top-level overlay, matching HomeScreen's placement and sizing logic
         NavBar(navController = navController, selectedIndex = 2)
     }

@@ -4,16 +4,13 @@ import androidx.lifecycle.ViewModel
 import com.example.zybooks.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 data class ShopSlot(
-    val id: String, // Changed to String for unique naming like "FOOD_0"
     val imageRes: Int? = null,
     val price: Int = 0
 )
@@ -49,7 +46,6 @@ class ShopViewModel : ViewModel() {
                 ShopSlot("TOY_0", R.drawable.shoptoy1, 5),
                 ShopSlot("TOY_1", R.drawable.shoptoy2, 10),
                 ShopSlot("TOY_2", R.drawable.shoptoy3, 15),
-                ShopSlot("TOY_3", price = 20)
             )),
 
             // Row 3: COSMETICS
@@ -85,18 +81,9 @@ class ShopViewModel : ViewModel() {
 
     fun purchaseItem(slot: ShopSlot, onSuccess: () -> Unit = {}, onFailure: (String) -> Unit = {}) {
         val userId = auth.currentUser?.uid ?: return
-        if (_userCoins.value < slot.price) {
-            onFailure("Not enough coins!")
-            return
         }
 
-        db.collection("users").document(userId)
-            .update("coins", FieldValue.increment(-slot.price.toLong()))
-            .addOnSuccessListener {
                 onSuccess()
-                _selectedSlot.value = null // Deselect after purchase
-            }
-            .addOnFailureListener {
                 onFailure(it.message ?: "Purchase failed")
             }
     }
