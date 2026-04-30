@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.example.zybooks.R
 
 
@@ -95,16 +97,19 @@ fun ShopScreen(
                         .background(Color.Red)
                 )
 
-                // MIDDLE AREA: 360px width, 629px height
+                // MIDDLE AREA
                 Box(
                     modifier = Modifier
-                        .width(360.dp)
-                        .height(629.dp)
+                        .fillMaxWidth()
+                        .weight(1f)
                 ) {
+                    val scrollState = rememberScrollState()
                     Column(
-                        modifier = Modifier.fillMaxSize().padding(top = 20.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(40.dp)
+                        verticalArrangement = Arrangement.SpaceEvenly
                     ) {
                         rows.forEach { row ->
                             Column(
@@ -149,12 +154,6 @@ fun ShopScreen(
                 }
 
                 // BOTTOM BOUNDARY
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(Color.Red)
-                )
             }
         }
 
