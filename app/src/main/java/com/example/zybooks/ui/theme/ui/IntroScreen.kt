@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -286,11 +287,9 @@ fun LogInScreen(
             if (errorMessage.isNotBlank()) {
                 Text(
                     text = errorMessage, 
-                    color = Color.Red, 
-                    modifier = Modifier.background(
-                        color = Color.Black.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(8.dp)
-                    ).padding(8.dp),
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(8.dp).background(Color.Black),
                     textAlign = TextAlign.Center
                 )
             }
@@ -426,7 +425,8 @@ fun SignUpScreen(
             )
 
             if (errorMessage.isNotBlank()) {
-                Text(text = errorMessage, color = Color.Red, modifier = Modifier.padding(8.dp))
+                Text(text = errorMessage, color = Color.Red,fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(8.dp).background(Color.Black))
             }
 
             Spacer(modifier = Modifier.height(16.dp))
