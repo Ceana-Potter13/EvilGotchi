@@ -51,10 +51,10 @@ class ShopViewModel : ViewModel() {
 
             // Row 2: TOYS
             ShopRow(2, "TOYS", listOf(
-                ShopSlot("TOY_0", R.drawable.shoptoy1, 10),
-                ShopSlot("TOY_1", R.drawable.shoptoy2, 10),
-                ShopSlot("TOY_2", R.drawable.shoptoy3, 10),
-                ShopSlot("TOY_3", R.drawable.shoptoy4, 10)
+                ShopSlot("TOY_0", R.drawable.shoptoy1, price = 10, amount = 10, statAffected = "happiness"),
+                ShopSlot("TOY_1", R.drawable.shoptoy2, price = 10, amount = 10, statAffected = "happiness"),
+                ShopSlot("TOY_2", R.drawable.shoptoy3, price = 10, amount = 10, statAffected = "happiness"),
+                ShopSlot("TOY_3", R.drawable.shoptoy4, price = 10, amount = 10, statAffected = "happiness")
             ))
         )
     )
@@ -92,9 +92,10 @@ class ShopViewModel : ViewModel() {
                 // Deduct coins
                 transaction.update(userDocRef, "coins", currentCoins - slot.price)
                 
-                // Update hunger or hydration if applicable
+                // Update hunger, hydration, or happiness if applicable
                 slot.statAffected?.let { stat ->
-                    val currentStatValue = snapshot.getLong(stat) ?: 100L
+                    val defaultValue = if (stat == "happiness") 0L else 100L
+                    val currentStatValue = snapshot.getLong(stat) ?: defaultValue
                     val newValue = (currentStatValue + slot.amount).coerceAtMost(100L)
                     transaction.update(userDocRef, stat, newValue)
                 }

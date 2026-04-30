@@ -29,6 +29,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.zybooks.R
+import com.example.zybooks.ui.theme.MutedCrimson
+import com.example.zybooks.ui.theme.ProjectFirstGoTheme
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 
 
 class ShopActivity : ComponentActivity() {
@@ -37,8 +42,8 @@ class ShopActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+            ProjectFirstGoTheme {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     val navController = rememberNavController()
                     ShopScreen(navController = navController, viewModel = viewModel)
                 }
@@ -58,8 +63,12 @@ fun ShopScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
+            containerColor = Color.White,
             bottomBar = {
-                BottomAppBar {
+                BottomAppBar(
+                    containerColor = MutedCrimson,
+                    contentColor = Color.White
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -89,12 +98,12 @@ fun ShopScreen(
                     .background(Color.White),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // TOP BOUNDARY: 360px width, 95px height
+                // TOP BOUNDARY: Acts as a spacer for the NavBar
                 Box(
                     modifier = Modifier
                         .width(360.dp)
                         .height(95.dp)
-                        .background(Color.Red)
+                        .background(Color.Transparent)
                 )
 
                 // MIDDLE AREA
@@ -139,7 +148,7 @@ fun ShopScreen(
                                 .padding(bottom = 16.dp)
                                 .width(200.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (hasEnoughCoins) Color(0xFFB23A3A) else Color.Gray
+                                containerColor = if (hasEnoughCoins) MutedCrimson else Color.Gray
                             ),
                             shape = RoundedCornerShape(10.dp),
                             enabled = hasEnoughCoins
@@ -172,7 +181,7 @@ fun ShopRowItem(
         modifier = Modifier
             .width(334.dp)
             .height(IntrinsicSize.Min)
-            .background(color = Color(0xFFB23A3A), shape = RoundedCornerShape(15.dp))
+            .background(color = MutedCrimson, shape = RoundedCornerShape(15.dp))
             .padding(horizontal = 27.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -194,8 +203,10 @@ fun ShopRowItem(
                 contentAlignment = Alignment.Center
             ) {
                 if (slot.imageRes != null) {
-                    Image(
-                        painter = painterResource(id = slot.imageRes),
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(slot.imageRes)
+                            .build(),
                         contentDescription = null,
                         modifier = Modifier.size(50.dp),
                         contentScale = ContentScale.Fit
