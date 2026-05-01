@@ -64,6 +64,10 @@ class MainActivity : ComponentActivity() {
                     composable("cinemascreen") {
                         CinemaScreen(navController = navController)
                     }
+
+                    composable("evolutionscreen") {
+                        EvolutionScreen(navController = navController)
+                    }
                 }
             }
         }

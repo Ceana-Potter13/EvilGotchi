@@ -18,6 +18,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -28,7 +29,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -387,11 +390,16 @@ fun HomeScreen(navController: NavController) {
                                 onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
                                 onFastForwardChange = { isFastForwarding = it }
                             )
+                            
+                            // Evolution Utility
                             Image(
                                 painter = painterResource(id = R.drawable.gotchi_progress),
                                 contentDescription = "Progress",
-                                modifier = Modifier.size(50.dp).clickable { }
+                                modifier = Modifier.size(50.dp).clickable { 
+                                    navController.navigate("evolutionscreen")
+                                }
                             )
+                            
                             Image(
                                 painter = painterResource(id = R.drawable.camerabutton),
                                 contentDescription = "Camera",
@@ -457,11 +465,37 @@ fun HomeScreen(navController: NavController) {
                         horizontalAlignment = Alignment.End
                     ) {
                         Box(modifier = Modifier.padding(end = 16.dp, bottom = 8.dp)) {
-                            DevToolsRow(
-                                isTimeFrozen = isTimeFrozen,
-                                onFreezeToggle = { isTimeFrozen = !isTimeFrozen },
-                                onFastForwardChange = { isFastForwarding = it }
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Fast Forward Utility (Dev Tool)
+                                Image(
+                                    painter = painterResource(id = R.drawable.dev_fastforwardbutton),
+                                    contentDescription = "Fast Forward",
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onPress = {
+                                                    isFastForwarding = true
+                                                    tryAwaitRelease()
+                                                    isFastForwarding = false
+                                                }
+                                            )
+                                        }
+                                )
+                                
+                                // Time Freeze (Dev Tool)
+                                Image(
+                                    painter = painterResource(id = R.drawable.dev_frozentime),
+                                    contentDescription = "Freeze Time",
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .clickable { isTimeFrozen = !isTimeFrozen },
+                                    colorFilter = ColorFilter.tint(if (isTimeFrozen) Color.Green else Color.Red)
+                                )
+                            }
                         }
 
                         Row(
@@ -499,12 +533,14 @@ fun HomeScreen(navController: NavController) {
                                 Image(
                                     painter = painterResource(id = R.drawable.gotchi_progress),
                                     contentDescription = "Progress",
-                                    modifier = Modifier.size(50.dp).clickable { }
+                                    modifier = Modifier.size(50.dp).clickable { 
+                                        navController.navigate("evolutionscreen")
+                                    }
                                 )
-                            Image(
-                                painter = painterResource(id = R.drawable.camerabutton),
-                                contentDescription = "Camera",
-                                modifier = Modifier.size(50.dp).clickable {
+                                Image(
+                                    painter = painterResource(id = R.drawable.camerabutton),
+                                    contentDescription = "Camera",
+                                    modifier = Modifier.size(50.dp).clickable {
                                     if (!isCameraActive) {
                                         val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
                                         if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {

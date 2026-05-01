@@ -1,5 +1,6 @@
 package com.example.zybooks.ui.theme.ui
 
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -61,13 +63,17 @@ fun ShopScreen(
     val selectedSlot by viewModel.selectedSlot.collectAsState()
     val userCoins by viewModel.userCoins.collectAsState()
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = Color.White,
             bottomBar = {
                 BottomAppBar(
                     containerColor = MutedCrimson,
-                    contentColor = Color.White
+                    contentColor = Color.White,
+                    modifier = if (isLandscape) Modifier.padding(start = 80.dp) else Modifier
                 ) {
                     Row(
                         modifier = Modifier
@@ -95,35 +101,45 @@ fun ShopScreen(
                 modifier = Modifier
                     .padding(innerPadding)
                     .fillMaxSize()
+                    .then(if (isLandscape) Modifier.padding(start = 80.dp) else Modifier)
                     .background(Color.White),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // TOP BOUNDARY: Acts as a spacer for the NavBar
-                Box(
-                    modifier = Modifier
-                        .width(360.dp)
-                        .height(95.dp)
-                        .background(Color.Transparent)
-                )
+                // TOP BOUNDARY: Acts as a spacer for the NavBar in portrait
+                if (!isLandscape) {
+                    Box(
+                        modifier = Modifier
+                            .width(360.dp)
+                            .height(95.dp)
+                            .background(Color.Transparent)
+                    )
+                }
 
                 // MIDDLE AREA
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .padding(top = if (isLandscape) 0.dp else 0.dp) // Ensure no extra padding
                 ) {
                     val scrollState = rememberScrollState()
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .then(if (isLandscape) Modifier.offset(y = (-2).dp) else Modifier)
                             .verticalScroll(scrollState),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceEvenly
+                        verticalArrangement = if (isLandscape) Arrangement.Top else Arrangement.SpaceEvenly
                     ) {
+                        // Raised even more by removing most top padding in landscape
+                        if (isLandscape) Spacer(modifier = Modifier.height(0.dp))
+
                         rows.forEach { row ->
                             Column(
                                 horizontalAlignment = Alignment.Start,
-                                modifier = Modifier.width(334.dp)
+                                modifier = Modifier
+                                    .width(334.dp)
+                                    .padding(vertical = if (isLandscape) 4.dp else 0.dp)
                             ) {
                                 Text(
                                     text = row.title.uppercase(),
@@ -136,6 +152,10 @@ fun ShopScreen(
                                 ShopRowItem(row, selectedSlot, onSlotSelect = { viewModel.selectSlot(it) })
                             }
                         }
+                        
+                        // Extra spacer at bottom of scroll
+                        if (!isLandscape) Spacer(modifier = Modifier.height(80.dp))
+                        else Spacer(modifier = Modifier.height(40.dp))
                     }
 
                     // BUY BUTTON
@@ -144,9 +164,9 @@ fun ShopScreen(
                         Button(
                             onClick = { if (hasEnoughCoins) viewModel.purchaseItem(slot) },
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 16.dp)
-                                .width(200.dp),
+                                .align(if (isLandscape) Alignment.CenterEnd else Alignment.BottomCenter)
+                                .padding(end = if (isLandscape) 32.dp else 0.dp, bottom = if (isLandscape) 0.dp else 16.dp)
+                                .width(if (isLandscape) 160.dp else 200.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (hasEnoughCoins) MutedCrimson else Color.Gray
                             ),
@@ -156,7 +176,8 @@ fun ShopScreen(
                             Text(
                                 text = if (hasEnoughCoins) "BUY $${slot.price}" else "NOT ENOUGH",
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
                     }
