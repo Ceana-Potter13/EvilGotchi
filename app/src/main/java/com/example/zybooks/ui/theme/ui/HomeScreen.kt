@@ -106,7 +106,7 @@ fun HomeScreen(navController: NavController) {
             val tickRate = if (isFastForwarding) 1000L else 60000L
             docRef.get().addOnSuccessListener { snapshot ->
                 val currentTime = System.currentTimeMillis()
-                
+
                 if (snapshot.exists()) {
                     val savedHunger = snapshot.getLong("hunger")?.toInt() ?: 100
                     val savedHydration = snapshot.getLong("hydration")?.toInt() ?: 100
@@ -124,10 +124,10 @@ fun HomeScreen(navController: NavController) {
 
                     if (isFastForwarding) {
                         if (!isTimeFrozen) {
-                            lastDecayTime -= 59000L
+                            lastDecayTime -= 179000L
                         }
-                        lastGrowthTime -= 59000L
-                        lastHappinessDecayTime -= 59000L
+                        lastGrowthTime -= 179000L
+                        lastHappinessDecayTime -= 179000L
                     }
 
                     val decayMinutes = ((currentTime - lastDecayTime) / 60000).toInt()
@@ -156,7 +156,7 @@ fun HomeScreen(navController: NavController) {
                         val growthTicks = growthMinutes / 5
                         if (currentHunger > 50 && currentHydration > 50) {
                             currentHappiness += (growthTicks * 5)
-                            
+
                             while (currentHappiness >= 100 && currentStage != "Elder") {
                                 currentHappiness -= 100
                                 currentStage = when (currentStage) {
@@ -165,7 +165,7 @@ fun HomeScreen(navController: NavController) {
                                     "Adult" -> "Elder"
                                     else -> currentStage
                                 }
-                                
+
                                 val stageList = listOf("Baby", "Teen", "Adult", "Elder")
                                 val currentIdx = stageList.indexOf(currentStage)
                                 val highestStored = sharedPrefs.getString("highest_stage_${userId}", "Baby") ?: "Baby"
@@ -174,9 +174,9 @@ fun HomeScreen(navController: NavController) {
                                     sharedPrefs.edit().putString("highest_stage_${userId}", currentStage).apply()
                                 }
                             }
-                            
+
                             if (currentStage == "Elder" && currentHappiness > 100) {
-                                currentHappiness = 100 
+                                currentHappiness = 100
                             }
                         }
                         newLastGrowthTime += (growthTicks * 5 * 60000L)
@@ -187,7 +187,7 @@ fun HomeScreen(navController: NavController) {
                         var decayAmount = 0
                         if (currentHunger < 50) decayAmount += happinessDecayMinutes
                         if (currentHydration < 50) decayAmount += happinessDecayMinutes
-                        
+
                         if (decayAmount > 0) {
                             currentHappiness = (currentHappiness - decayAmount).coerceAtLeast(0)
                         }
@@ -267,16 +267,8 @@ fun HomeScreen(navController: NavController) {
             val statsOverlayHeight = if (!isLandscape) 260.dp else 0.dp
 
             // --- DYNAMIC PET SIZE ---
-            // Base size is relative to screen width, but capped for large screens.
-            val baseSize = (screenWidth * 0.5f).coerceAtMost(350.dp)
-            val stageMultiplier = when (petStage) {
-                "Baby" -> 0.7f
-                "Teen" -> 0.85f
-                "Adult" -> 1.0f
-                "Elder" -> 1.1f
-                else -> 1.0f
-            }
-            val finalPetSize = baseSize * stageMultiplier
+            val petData = getPetData(eggId, petStage)
+            val finalPetSize = petData.second
 
             // --- BACKGROUND IMAGE ---
             if (isCameraActive) {
@@ -337,16 +329,16 @@ fun HomeScreen(navController: NavController) {
                     // Max X excludes the Stats Overlay in Landscape.
                     // Min Y excludes the NavBar in Portrait.
                     // Max Y excludes the Stats Overlay in Portrait.
-                    
+
                     val minXLimit = 10.dp
                     val maxXLimit = (screenWidth - statsOverlayWidth - finalPetSize - 10.dp).coerceAtLeast(minXLimit + 20.dp)
-                    
+
                     val minYLimit = navBarTopHeight + 20.dp
                     val maxYLimit = (screenHeight - statsOverlayHeight - finalPetSize - 10.dp).coerceAtLeast(minYLimit + 20.dp)
 
                     targetX = Random.nextInt(minXLimit.value.toInt(), maxXLimit.value.toInt()).dp
                     targetY = Random.nextInt(minYLimit.value.toInt(), maxYLimit.value.toInt()).dp
-                    
+
                     delay(Random.nextLong(4000, 8000))
                 }
             }
@@ -363,7 +355,6 @@ fun HomeScreen(navController: NavController) {
             EvilGotchiPet(
                 eggId = eggId,
                 petStage = petStage,
-                baseSize = finalPetSize,
                 modifier = Modifier
                     .offset(x = animX, y = animY + bobOffset.dp)
                     .rotate(rotationAnimatable.value)
@@ -422,7 +413,7 @@ fun HomeScreen(navController: NavController) {
 
                                                 val petRes = getPetResource(eggId, petStage)
                                                 val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
-                                                
+
                                                 val finalPetBitmap = if (!isMovingRight) {
                                                     val matrix = Matrix().apply { postScale(-1f, 1f) }
                                                     Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
@@ -435,7 +426,7 @@ fun HomeScreen(navController: NavController) {
                                                     y = (animY.value / screenHeight.value) * bitmap.height,
                                                     scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
                                                 )
-                                                
+
                                                 saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
                                                 isCameraActive = false
                                             }
@@ -531,7 +522,7 @@ fun HomeScreen(navController: NavController) {
 
                                                 val petRes = getPetResource(eggId, petStage)
                                                 val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
-                                                
+
                                                 val finalPetBitmap = if (!isMovingRight) {
                                                     val matrix = Matrix().apply { postScale(-1f, 1f) }
                                                     Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
@@ -544,7 +535,7 @@ fun HomeScreen(navController: NavController) {
                                                     y = (animY.value / screenHeight.value) * bitmap.height,
                                                     scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
                                                 )
-                                                
+
                                                 saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
                                                 isCameraActive = false
                                             }
@@ -605,45 +596,47 @@ fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, iconRes:
 }
 
 @Composable
-fun EvilGotchiPet(eggId: Int, petStage: String, baseSize: Dp, modifier: Modifier = Modifier) {
-    val petResource = getPetResource(eggId, petStage)
-    
+fun EvilGotchiPet(eggId: Int, petStage: String, modifier: Modifier = Modifier) {
+    val petData = getPetData(eggId, petStage)
+
     Image(
-        painter = painterResource(id = petResource),
+        painter = painterResource(id = petData.first),
         contentDescription = "Your EvilGotchi",
-        modifier = modifier.size(baseSize)
+        modifier = modifier.size(petData.second)
     )
 }
 
-fun getPetResource(eggId: Int, petStage: String): Int {
+fun getPetData(eggId: Int, petStage: String): Pair<Int, Dp> {
     return when (petStage) {
         "Teen" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willteen // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
+            1 -> R.drawable.paytonteen to 200.dp // Payton
+            2 -> R.drawable.ceanateen to 200.dp// Ceaana
+            3 -> R.drawable.willteen to 200.dp // Will
+            4 -> R.drawable.kolateen to 300.dp // Kola
+            else -> R.drawable.babykuna to 150.dp
         }
         "Adult" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willadult // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
+            1 -> R.drawable.paytonadult to 250.dp // Payton
+            2 -> R.drawable.ceanaadult to 250.dp // Ceaana
+            3 -> R.drawable.willadult to 250.dp // Will
+            4 -> R.drawable.kolaadult to 450.dp // Kola
+            else -> R.drawable.babykuna to 200.dp
         }
         "Elder" -> when (eggId) {
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willelder // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
+            1 -> R.drawable.paytonelder to 300.dp// Payton
+            2 -> R.drawable.ceanaelder to 300.dp // Ceaana
+            3 -> R.drawable.willelder to 300.dp // Will
+            4 -> R.drawable.kolaelder to 600.dp // Kola
+            else -> R.drawable.babykuna to 250.dp
         }
         else -> when (eggId) { // "Baby"
-            1 -> R.drawable.babykuna // Payton
-            2 -> R.drawable.babykuna // Ceaana
-            3 -> R.drawable.willbaby // Will
-            4 -> R.drawable.babykuna // Kola
-            else -> R.drawable.babykuna
+            1 -> R.drawable.paytonbaby to 120.dp // Payton
+            2 -> R.drawable.ceanababy to 120.dp // Ceaana
+            3 -> R.drawable.willbaby to 120.dp // Will
+            4 -> R.drawable.babykuna to 220.dp // Kola
+            else -> R.drawable.babykuna to 120.dp
         }
     }
 }
+
+fun getPetResource(eggId: Int, petStage: String): Int = getPetData(eggId, petStage).first
