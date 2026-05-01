@@ -1,8 +1,18 @@
 package com.example.zybooks.ui.theme.ui
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.view.Surface
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageProxy
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -21,11 +31,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.example.zybooks.R
 import com.example.zybooks.ui.theme.*
@@ -43,6 +55,17 @@ fun HomeScreen(navController: NavController) {
     
     val sharedPrefs = remember { context.getSharedPreferences("EvilGotchiPrefs", Context.MODE_PRIVATE) }
     
+    // --- CAMERA STATE ---
+    var isCameraActive by remember { mutableStateOf(false) }
+    val imageCapture = remember { ImageCapture.Builder().build() }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            isCameraActive = true
+        }
+    }
+
     // --- PET STATS ---
     var hunger by remember { mutableIntStateOf(100) }
     var hydration by remember { mutableIntStateOf(100) }
@@ -256,12 +279,16 @@ fun HomeScreen(navController: NavController) {
             val finalPetSize = baseSize * stageMultiplier
 
             // --- BACKGROUND IMAGE ---
-            Image(
-                painter = painterResource(id = R.drawable.training_stage3),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop
-            )
+            if (isCameraActive) {
+                CameraPreview(imageCapture = imageCapture)
+            } else {
+                Image(
+                    painter = painterResource(id = R.drawable.training_stage3),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            }
 
             if (!isLandscape) {
                 NavBar(navController = navController, selectedIndex = 1)
@@ -377,7 +404,44 @@ fun HomeScreen(navController: NavController) {
                             Image(
                                 painter = painterResource(id = R.drawable.camerabutton),
                                 contentDescription = "Camera",
-                                modifier = Modifier.size(50.dp).clickable { }
+                                modifier = Modifier.size(50.dp).clickable {
+                                    if (!isCameraActive) {
+                                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                            isCameraActive = true
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    } else {
+                                        val mainExecutor = ContextCompat.getMainExecutor(context)
+                                        imageCapture.targetRotation = Surface.ROTATION_0
+                                        imageCapture.takePicture(mainExecutor, object : ImageCapture.OnImageCapturedCallback() {
+                                            override fun onCaptureSuccess(image: ImageProxy) {
+                                                val bitmap = imageProxyToBitmap(image)
+                                                image.close()
+
+                                                val petRes = getPetResource(eggId, petStage)
+                                                val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
+                                                
+                                                val finalPetBitmap = if (!isMovingRight) {
+                                                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                                                    Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
+                                                } else petBitmap
+
+                                                val overlaid = overlayBitmap(
+                                                    baseBitmap = bitmap,
+                                                    overlayBitmap = finalPetBitmap,
+                                                    x = (animX.value / screenWidth.value) * bitmap.width,
+                                                    y = (animY.value / screenHeight.value) * bitmap.height,
+                                                    scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
+                                                )
+                                                
+                                                saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
+                                                isCameraActive = false
+                                            }
+                                        })
+                                    }
+                                }
                             )
                             Text(
                                 text = "$ $coins",
@@ -446,11 +510,48 @@ fun HomeScreen(navController: NavController) {
                                     contentDescription = "Progress",
                                     modifier = Modifier.size(50.dp).clickable { }
                                 )
-                                Image(
-                                    painter = painterResource(id = R.drawable.camerabutton),
-                                    contentDescription = "Camera",
-                                    modifier = Modifier.size(50.dp).clickable { }
-                                )
+                            Image(
+                                painter = painterResource(id = R.drawable.camerabutton),
+                                contentDescription = "Camera",
+                                modifier = Modifier.size(50.dp).clickable {
+                                    if (!isCameraActive) {
+                                        val permissionCheckResult = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                                        if (permissionCheckResult == PackageManager.PERMISSION_GRANTED) {
+                                            isCameraActive = true
+                                        } else {
+                                            permissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    } else {
+                                        val mainExecutor = ContextCompat.getMainExecutor(context)
+                                        imageCapture.targetRotation = Surface.ROTATION_0
+                                        imageCapture.takePicture(mainExecutor, object : ImageCapture.OnImageCapturedCallback() {
+                                            override fun onCaptureSuccess(image: ImageProxy) {
+                                                val bitmap = imageProxyToBitmap(image)
+                                                image.close()
+
+                                                val petRes = getPetResource(eggId, petStage)
+                                                val petBitmap = BitmapFactory.decodeResource(context.resources, petRes)
+                                                
+                                                val finalPetBitmap = if (!isMovingRight) {
+                                                    val matrix = Matrix().apply { postScale(-1f, 1f) }
+                                                    Bitmap.createBitmap(petBitmap, 0, 0, petBitmap.width, petBitmap.height, matrix, true)
+                                                } else petBitmap
+
+                                                val overlaid = overlayBitmap(
+                                                    baseBitmap = bitmap,
+                                                    overlayBitmap = finalPetBitmap,
+                                                    x = (animX.value / screenWidth.value) * bitmap.width,
+                                                    y = (animY.value / screenHeight.value) * bitmap.height,
+                                                    scale = (finalPetSize.value * petScale / screenWidth.value) * bitmap.width / finalPetBitmap.width
+                                                )
+                                                
+                                                saveBitmapToGallery(context, overlaid, "EvilGotchi_${System.currentTimeMillis()}")
+                                                isCameraActive = false
+                                            }
+                                        })
+                                    }
+                                }
+                            )
                             }
                         }
                     }
@@ -505,7 +606,17 @@ fun StatBar(label: String, value: Int, barColor: Color, bgColor: Color, iconRes:
 
 @Composable
 fun EvilGotchiPet(eggId: Int, petStage: String, baseSize: Dp, modifier: Modifier = Modifier) {
-    val petResource = when (petStage) {
+    val petResource = getPetResource(eggId, petStage)
+    
+    Image(
+        painter = painterResource(id = petResource),
+        contentDescription = "Your EvilGotchi",
+        modifier = modifier.size(baseSize)
+    )
+}
+
+fun getPetResource(eggId: Int, petStage: String): Int {
+    return when (petStage) {
         "Teen" -> when (eggId) {
             1 -> R.drawable.babykuna // Payton
             2 -> R.drawable.babykuna // Ceaana
@@ -535,10 +646,4 @@ fun EvilGotchiPet(eggId: Int, petStage: String, baseSize: Dp, modifier: Modifier
             else -> R.drawable.babykuna
         }
     }
-    
-    Image(
-        painter = painterResource(id = petResource),
-        contentDescription = "Your EvilGotchi",
-        modifier = modifier.size(baseSize)
-    )
 }
